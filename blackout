@@ -1,0 +1,213 @@
+#!/usr/bin/env bash
+
+webcam='/sys/bus/usb/devices/1-4/bConfigurationValue' # Path to webcam device.
+bluetooth='/sys/bus/usb/devices/1-7/bConfigurationValue' # Path to bluetooth device.
+wifi='iwlwifi' # Name of Wifi driver Module
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+STD='\033[0m'
+
+camStatus=""
+blueStatus=""
+wifiStatus=""
+
+banner() {
+    clear
+    echo -e ${RED}
+    echo '__________.__                 __   ________          __   '
+    echo '\______   \  | _____    ____ |  | _\_____  \  __ ___/  |_ '
+    echo ' |    |  _/  | \__  \ _/ ___\|  |/ //   |   \|  |  \   __\'
+    echo ' |    |   \  |__/ __ \\  \___|    </    |    \  |  /|  |  '
+    echo ' |______  /____(____  /\___  >__|_ \_______  /____/ |__|  '
+    echo '        \/          \/     \/     \/       \/             '
+    echo
+    echo -e ${STD}
+}
+
+Help() {
+    echo "A simple script that can enable/disable various Wireless devices on your System."
+    echo -e ${GREEN}
+    echo "Syntax : blackout"
+    echo -e ${STD}
+    echo "optionally : blackout -[a|c|b|w|h|v]"
+    echo "options:"
+    echo "-a     Disable all wireless devices and exit."
+    echo "-c     Disable webcam and exit."
+    echo "-b     Disable bluetooth and exit."
+    echo "-w     Disable wifi card and exit."
+    echo "-h     Print this Help and exit."
+    echo "-v     Print software version and exit."
+}
+
+version() {
+    echo 'Version: 0.1 Alpha'
+}
+
+pause() {
+    echo
+    read -p "Press [Enter] key to continue..." fackEnterKey
+}
+
+currentStatus() {
+    if [[ $(cat $webcam) == "1" ]]; then
+        camStatus="${RED}On${STD}"
+    else
+        camStatus="${GREEN}Off${STD}"
+    fi
+    if [[ $(cat $bluetooth) == "1" ]]; then
+        blueStatus="${RED}On${STD}"
+    else
+        blueStatus="${GREEN}Off${STD}"
+    fi
+    if [[ $(lsmod | grep -Eo "^($wifi)\b") == $wifi ]]; then
+        wifiStatus="${RED}On${STD}"
+    else
+        wifiStatus="${GREEN}Off${STD}"
+    fi
+}
+
+toggle() {
+    device=$1
+    case $device in
+        "cam" )
+            if [[ $(cat $webcam) == "1" ]]; then
+                echo 0 > $webcam
+            else
+                echo 1 > $webcam
+            fi
+            ;;
+        "bluetooth" )
+            if [[ $(cat $bluetooth) == "1" ]]; then
+                echo 0 > $bluetooth
+            else
+                echo 1 > $bluetooth
+            fi
+            ;;
+        "wifi" )
+            if [[ $(lsmod | grep -Eo "^($wifi)\b") == $wifi ]]; then
+                moduleStr=$(lsmod | grep -E "^($wifi)\b" | grep -Eo "\s([a-z0-9,_]+?)$")
+                moduleStr=$(echo $moduleStr | tr ',' ' ')
+                echo $moduleStr > /tmp/blackout-modules-dep
+                modules=($moduleStr)
+                for module in ${modules[*]}; do
+                    modprobe -r $module
+                done
+                modprobe -r $wifi
+            else
+                modules=($(cat /tmp/blackout-modules-dep))
+                modprobe $wifi
+                for module in ${modules[*]}; do
+                    modprobe $module
+                done
+            fi
+            ;;
+    esac
+}
+
+turnOff() {
+    case $1 in
+    a )
+        echo 0 > $webcam
+        echo 0 > $bluetooth
+        moduleStr=$(lsmod | grep -E "^($wifi)\b" | grep -Eo "\s([a-z0-9,_]+?)$")
+        moduleStr=$(echo $moduleStr | tr ',' ' ')
+        echo $moduleStr > /tmp/blackout-modules-dep
+        modules=($moduleStr)
+        for module in ${modules[*]}; do
+            modprobe -r $module
+        done
+        modprobe -r $wifi
+        echo -e "${GREEN}All wireless devices disabled${STD}"
+        ;;
+    b )
+        echo 0 > $bluetooth
+        echo -e "${GREEN}Bluetooth disabled${STD}"
+        ;;
+    c )
+        echo 0 > $webcam
+        echo -e "${GREEN}Webcam disabled${STD}"
+        ;;
+    w )
+        moduleStr=$(lsmod | grep -E "^($wifi)\b" | grep -Eo "\s([a-z0-9,_]+?)$")
+        moduleStr=$(echo $moduleStr | tr ',' ' ')
+        echo $moduleStr > /tmp/blackout-modules-dep
+        modules=($moduleStr)
+        for module in ${modules[*]}; do
+            modprobe -r $module
+        done
+        modprobe -r $wifi
+        echo -e "${GREEN}Wifi card disabled${STD}"
+        ;;
+    esac
+}
+
+menu() {
+    echo -e "1    Webcam ($camStatus)"
+    echo -e "2    Bluetooth ($blueStatus)"
+    echo -e "3    Wifi Card ($wifiStatus)"
+    echo "q    Exit"
+    echo
+    echo
+    local choice
+    read -p "> " choice
+    case $choice in
+        1 )
+            toggle cam
+            ;;
+        2 )
+            toggle bluetooth
+            ;;
+        3 )
+            toggle wifi
+            ;;
+        q )
+            exit
+            ;;
+        * )
+            echo "Invalid choice"
+            pause
+            ;;
+    esac
+}
+
+if [[ $1 == "" ]]; then
+    if [ "$EUID" -ne 0 ]; then
+        echo "Please run this script as root"
+        pause
+        exit
+    fi
+    while true
+    do
+        banner
+        currentStatus
+        menu
+    done
+elif [[ ! $@ =~ ^\-.+ ]]; then
+    banner
+    echo "Unknown option"
+    echo
+    Help
+    exit
+else
+    banner
+    while getopts "abchvw" option; do
+        case $option in
+            a|b|c|w )
+                turnOff $option
+                ;;
+            h )
+                Help
+                ;;
+            v )
+                version
+                ;;
+            \? )
+                echo "Unknown option"
+                echo
+                Help
+                ;;
+        esac
+        exit
+    done
+fi
