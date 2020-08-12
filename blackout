@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+# TODO: Autodetect paths!
+
 webcam='/sys/bus/usb/devices/1-4/bConfigurationValue' # Path to webcam device.
 bluetooth='/sys/bus/usb/devices/1-7/bConfigurationValue' # Path to bluetooth device.
 wifi='iwlwifi' # Name of Wifi driver Module
